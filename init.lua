@@ -1,4 +1,5 @@
-local Menu = require("nui.menu")         -- left window (interactive list)
+local Menu = require("nui.menu") -- left window (interactive list)
+
 vim.api.nvim_create_user_command("LazyShop", function()
     local Popup = require("nui.popup")   -- right window (simple text)
     local Layout = require("nui.layout") -- organize windows in the screen
@@ -29,11 +30,9 @@ vim.api.nvim_create_user_command("LazyShop", function()
             })
         end,
         on_submit = function(item)
-            Snacks.notify("the " .. item.data.name .. " plugin was added ✅, please restart your neovim >< 🐱", {
-                level = vim.log.levels.INFO, -- snacks não tem "success", INFO é o mais próximo
-                timeout = 7000,              -- duração em milissegundos (5 segundos)
-                title = "LazyShop",
-            })
+            local plugin_manager = require("lazy-shop.plugin-manager")
+            print(item.data.name)
+            plugin_manager.insert_plugin("~/.config/nvim/lua/plugins", item.data)
         end
     })
 
