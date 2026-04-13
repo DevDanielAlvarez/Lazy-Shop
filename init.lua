@@ -28,6 +28,13 @@ vim.api.nvim_create_user_command("LazyShop", function()
                 "  " .. item.data.description, -- pega o primeiro valor da tabela data
             })
         end,
+        on_submit = function(item)
+            Snacks.notify("the " .. item.data.name .. " plugin was added ✅, please restart your neovim >< 🐱", {
+                level = vim.log.levels.INFO, -- snacks não tem "success", INFO é o mais próximo
+                timeout = 7000,              -- duração em milissegundos (5 segundos)
+                title = "LazyShop",
+            })
+        end
     })
 
     -- configure layout with explicit child sizes
@@ -53,7 +60,8 @@ function transform_the_repository_in_menu_itens()
     local items_of_repository = require("lazy-shop.repository")
     local menu_items = {}
     for _, item in ipairs(items_of_repository) do
-        table.insert(menu_items, Menu.item(item.name, { data = { description = item.description, url = item.url } }))
+        table.insert(menu_items,
+            Menu.item(item.name, { data = { description = item.description, url = item.url, name = item.name } }))
     end
     return menu_items
 end
