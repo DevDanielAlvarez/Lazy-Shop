@@ -108,3 +108,8 @@ local function open_add_plugin_menu()
     vim.api.nvim_set_current_win(search_input.winid)
     vim.cmd("startinsert")
 end
+
+function remove_plugin(dir_path, plugin_name)
+    local plugin_path = dir_path .. "/" .. plugin_name
+    vim.fn.delete(plugin_path, "rf")
+end
