@@ -3,28 +3,13 @@ local Input = require("nui.input")
 local Layout = require("nui.layout")
 local Popup = require("nui.popup")
 local event = require("nui.utils.autocmd").event
-
-local function transform_the_repository_in_menu_itens()
-    local items_of_repository = require("lazy-shop.repository")
-    local menu_items = {}
-    for _, item in ipairs(items_of_repository) do
-        table.insert(menu_items, Menu.item(item.name, {
-            data = {
-                description = item.description,
-                url = item.url,
-                name = item.name,
-            },
-        }))
-    end
-    return menu_items
-end
+local repository = require("lazy-shop.repository")
 
 local function remove_plugin(dir_path, plugin_name)
     local plugin_path = dir_path .. "/" .. plugin_name
     vim.fn.delete(plugin_path, "rf")
 end
 
--- Detecta se o arquivo já usa opts ou config
 local function detect_config_style(filepath)
     local lines = vim.fn.readfile(filepath)
     local content = table.concat(lines, "\n")
@@ -36,14 +21,12 @@ local function detect_config_style(filepath)
     return nil
 end
 
--- Injeta opts = {} no arquivo se não existir
 local function inject_opts(filepath)
     local lines = vim.fn.readfile(filepath)
     local new_lines = {}
     local injected = false
     for _, line in ipairs(lines) do
         table.insert(new_lines, line)
-        -- Injeta depois da linha que tem o plugin spec (primeira linha com aspas e vírgula ou chave)
         if not injected and line:match("^%s*return%s*{") then
             table.insert(new_lines, '    opts = {')
             table.insert(new_lines, '        -- configure your options here')
@@ -54,7 +37,6 @@ local function inject_opts(filepath)
     vim.fn.writefile(new_lines, filepath)
 end
 
--- Injeta config = function() end no arquivo se não existir
 local function inject_config(filepath)
     local lines = vim.fn.readfile(filepath)
     local new_lines = {}
@@ -71,104 +53,122 @@ local function inject_config(filepath)
     vim.fn.writefile(new_lines, filepath)
 end
 
-local function open_add_plugin_menu()
-    local all_items = transform_the_repository_in_menu_itens()
-
-    local right_window = Popup({
-        border = {
-            style = "rounded",
-            text = { top = " Plugin Information " },
-        },
-    })
-
-    local search_input = Input({
-        border = {
-            style = "rounded",
-            text = { top = " Search " },
-        },
-        win_options = {
-            winhighlight = "Normal:Normal",
-        },
-    }, {
-        prompt = "> ",
-        default_value = "",
-        on_change = function(_) end,
-    })
-
-    local plugin_menu = Menu({
-        border = {
-            style = "rounded",
-            text = { top = " Plugins " },
-        },
-        win_options = {
-            winhighlight = "Normal:Normal",
-        },
-    }, {
-        lines = all_items,
-        on_change = function(item)
-            vim.api.nvim_set_option_value("modifiable", true, { buf = right_window.bufnr })
-            vim.api.nvim_buf_set_lines(right_window.bufnr, 0, -1, false, {
-                "",
-                "  " .. (item.data.description or ""),
-            })
-        end,
-        on_submit = function(item)
-            local ok, plugin_manager = pcall(require, "lazy-shop.plugin-manager")
-            if not ok or type(plugin_manager) ~= "table" then
-                vim.notify("Erro ao carregar plugin-manager: " .. tostring("in plug " .. plugin_manager),
-                    vim.log.levels.ERROR)
-                return
-            end
-            plugin_manager.insert_plugin(vim.fn.stdpath("config") .. "/lua/plugins", item.data)
-        end,
-    })
-
-    local layout = Layout(
-        {
-            relative = "editor",
-            position = "50%",
-            size = {
-                width = "80%",
-                height = "60%",
+local function build_menu_items(data)
+    local items = {}
+    for _, item in ipairs(data) do
+        table.insert(items, Menu.item(item.name, {
+            data = {
+                description = item.description,
+                url = item.url,
+                name = item.name,
             },
-        },
-        Layout.Box({
+        }))
+    end
+    return items
+end
+
+local function open_add_plugin_menu()
+    vim.notify("LazyShop: fetching repository...", vim.log.levels.INFO)
+
+    repository.fetch(function(data)
+        local all_items = build_menu_items(data)
+
+        local right_window = Popup({
+            border = {
+                style = "rounded",
+                text = { top = " Plugin Information " },
+            },
+        })
+
+        local search_input = Input({
+            border = {
+                style = "rounded",
+                text = { top = " Search " },
+            },
+            win_options = {
+                winhighlight = "Normal:Normal",
+            },
+        }, {
+            prompt = "> ",
+            default_value = "",
+            on_change = function(_) end,
+        })
+
+        local plugin_menu = Menu({
+            border = {
+                style = "rounded",
+                text = { top = " Plugins " },
+            },
+            win_options = {
+                winhighlight = "Normal:Normal",
+            },
+        }, {
+            lines = all_items,
+            on_change = function(item)
+                vim.api.nvim_set_option_value("modifiable", true, { buf = right_window.bufnr })
+                vim.api.nvim_buf_set_lines(right_window.bufnr, 0, -1, false, {
+                    "",
+                    "  " .. (item.data.description or ""),
+                    "",
+                    "  url: " .. (item.data.url or ""),
+                })
+            end,
+            on_submit = function(item)
+                local ok, plugin_manager = pcall(require, "lazy-shop.plugin-manager")
+                if not ok or type(plugin_manager) ~= "table" then
+                    vim.notify("Erro ao carregar plugin-manager: " .. tostring(plugin_manager), vim.log.levels.ERROR)
+                    return
+                end
+                plugin_manager.insert_plugin(vim.fn.stdpath("config") .. "/lua/plugins", item.data)
+            end,
+        })
+
+        local layout = Layout(
+            {
+                relative = "editor",
+                position = "50%",
+                size = {
+                    width = "80%",
+                    height = "60%",
+                },
+            },
             Layout.Box({
-                Layout.Box(search_input, { size = 3 }),
-                Layout.Box(plugin_menu, { grow = 1 }),
-            }, { dir = "col", size = "40%" }),
-            Layout.Box(right_window, { size = "60%" }),
-        }, { dir = "row" })
-    )
+                Layout.Box({
+                    Layout.Box(search_input, { size = 3 }),
+                    Layout.Box(plugin_menu, { grow = 1 }),
+                }, { dir = "col", size = "40%" }),
+                Layout.Box(right_window, { size = "60%" }),
+            }, { dir = "row" })
+        )
 
-    layout:mount()
+        layout:mount()
 
-    search_input:on(event.TextChangedI, function()
-        local line = vim.api.nvim_get_current_line()
-        local query = line:gsub("^>%s*", ""):lower()
+        search_input:on(event.TextChangedI, function()
+            local line = vim.api.nvim_get_current_line()
+            local query = line:gsub("^>%s*", ""):lower()
 
-        local new_items = {}
-        for _, item in ipairs(all_items) do
-            if item.text:lower():find(query, 1, true) then
-                table.insert(new_items, item)
+            local new_items = {}
+            for _, item in ipairs(all_items) do
+                if item.text:lower():find(query, 1, true) then
+                    table.insert(new_items, item)
+                end
             end
-        end
 
-        vim.api.nvim_set_option_value("modifiable", true, { buf = plugin_menu.bufnr })
-        vim.api.nvim_buf_set_lines(plugin_menu.bufnr, 0, -1, false, {})
+            vim.api.nvim_set_option_value("modifiable", true, { buf = plugin_menu.bufnr })
+            vim.api.nvim_buf_set_lines(plugin_menu.bufnr, 0, -1, false, {})
+            for i, menu_item in ipairs(new_items) do
+                vim.api.nvim_buf_set_lines(plugin_menu.bufnr, i - 1, i, false, { "  " .. menu_item.text })
+            end
+        end)
 
-        for i, menu_item in ipairs(new_items) do
-            vim.api.nvim_buf_set_lines(plugin_menu.bufnr, i - 1, i, false, { "  " .. menu_item.text })
-        end
+        search_input:map("i", "<Tab>", function()
+            vim.api.nvim_set_current_win(plugin_menu.winid)
+            vim.cmd("stopinsert")
+        end, { noremap = true })
+
+        vim.api.nvim_set_current_win(search_input.winid)
+        vim.cmd("startinsert")
     end)
-
-    search_input:map("i", "<Tab>", function()
-        vim.api.nvim_set_current_win(plugin_menu.winid)
-        vim.cmd("stopinsert")
-    end, { noremap = true })
-
-    vim.api.nvim_set_current_win(search_input.winid)
-    vim.cmd("startinsert")
 end
 
 local function open_remove_plugin_menu()
@@ -243,7 +243,6 @@ local function open_remove_plugin_menu()
                 prompt = 'Remove "' .. item.data.name .. '"?',
             }, function(choice)
                 if choice ~= "Yes" then return end
-
                 local ok, err = pcall(remove_plugin, plugins_dir, item.data.filename)
                 if ok then
                     vim.notify('Plugin "' .. item.data.name .. '" removed successfully.', vim.log.levels.INFO)
@@ -282,7 +281,6 @@ local function open_remove_plugin_menu()
                 table.insert(new_items, item)
             end
         end
-
         vim.api.nvim_set_option_value("modifiable", true, { buf = plugin_menu.bufnr })
         vim.api.nvim_buf_set_lines(plugin_menu.bufnr, 0, -1, false, {})
         for i, menu_item in ipairs(new_items) do
@@ -371,11 +369,9 @@ local function open_config_plugin_menu()
             local style = detect_config_style(filepath)
 
             if style then
-                -- Já tem opts ou config: abre direto no editor
                 vim.cmd("edit " .. filepath)
-                vim.notify('Opening "' .. item.data.name .. '" for editing. Style detected: ' .. style, vim.log.levels.INFO)
+                vim.notify('Opening "' .. item.data.name .. '" — style detected: ' .. style, vim.log.levels.INFO)
             else
-                -- Não tem nenhum: pergunta qual estilo o usuário quer
                 vim.ui.select(
                     {
                         "opts = {}  (declarativo, recomendado pelo lazy.nvim)",
@@ -384,15 +380,13 @@ local function open_config_plugin_menu()
                     { prompt = 'Choose config style for "' .. item.data.name .. '":' },
                     function(choice)
                         if not choice then return end
-
                         if choice:find("opts") then
                             inject_opts(filepath)
                         else
                             inject_config(filepath)
                         end
-
                         vim.cmd("edit " .. filepath)
-                        vim.notify('Config injected into "' .. item.data.name .. '". File opened for editing.', vim.log.levels.INFO)
+                        vim.notify('Config injected into "' .. item.data.name .. '". File opened.', vim.log.levels.INFO)
                     end
                 )
             end
@@ -427,7 +421,6 @@ local function open_config_plugin_menu()
                 table.insert(new_items, item)
             end
         end
-
         vim.api.nvim_set_option_value("modifiable", true, { buf = plugin_menu.bufnr })
         vim.api.nvim_buf_set_lines(plugin_menu.bufnr, 0, -1, false, {})
         for i, menu_item in ipairs(new_items) do
