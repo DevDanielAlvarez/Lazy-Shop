@@ -119,7 +119,7 @@ local function open_add_plugin_menu()
                     vim.notify("Erro ao carregar plugin-manager: " .. tostring(plugin_manager), vim.log.levels.ERROR)
                     return
                 end
-                plugin_manager.insert_plugin(vim.fn.stdpath("config") .. "/lua/plugins", item.data)
+                plugin_manager.add_plugin("~/.config/nvim/lua/plugins", item.data)
             end,
         })
 
